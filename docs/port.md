@@ -70,15 +70,36 @@ python3 port/tools/framehash.py compare build/port-ref/boot.port.txt build/port-
 
 | Trace | Frames | Mesen2 | FCEUX (index only, best alignment) |
 | --- | --- | --- | --- |
-| `boot.mmin`: power-on, title, Lucasfilm logo, intro | 1200 | **1200/1200 identical** | 1185/1185 from frame 13 on (+2 frame alignment) |
-| `smoke.mmin`: the input sequence of `tools/trace-smoke.lua` | 900 | **900/900 identical** | 884/884 from frame 16 on |
-| START held 176–184 (ad hoc) | 320 | **320/320 identical** | |
+| `boot.mmin`: power-on, title, Lucasfilm logo, intro | 1200 | **1200/1200 frames identical** | 1185/1185 from frame 13 on (+2 frame alignment) |
+| `smoke.mmin`: the input sequence of `tools/trace-smoke.lua` | 900 | **900/900 frames identical** | 884/884 from frame 16 on |
+| START held 176–184 (ad hoc) | 320 | **320/320 frames identical** | |
+| `newgame.mmin`: intro, kid select, START, opening dialogue, walk on the verb UI | 8936 | **CPU RAM identical at all 8913 NMI entries; all 80,379 APU register writes identical; nametables, palette, OAM and CHR-RAM identical at every 30th NMI (297 snapshots)** | tracks until the first input, then drifts (frame alignment) |
+
+The power-on state matches Mesen2's reset. The PPU starts at the last dot of
+the pre-render line, and the CPU master clock starts one CPU cycle in. As a
+result, every NMI lands on the same CPU cycle and PPU dot in both.
+
+On long runs the gameplay trace is gated on machine state, not screen
+hashes. On a heavily loaded machine, Mesen2's own screen capture is
+nondeterministic: two runs with identical input disagreed on an isolated
+frame. The state comparisons are exact and instruction-aligned. The
+reference-side switches are `MM_NMIDUMP`, `MM_WRITELOG`, `MM_PPUDUMP` and
+`MM_NOSCREEN` for `ref-mesen.lua`, with `--nmi-dump`, `--watch 4000-4017`
+and `--ppu-dump` on the port side. `port/tests/gate.sh` runs every check and
+writes `build/port-gate.json`, which the release embeds as
+`build-info.json` "gate".
 
 FCEUX's first frames differ because its power-up palette RAM contents
 differ. Its frame alignment also varies by a couple of frames between
 launches: its Qt build runs emulation on its own thread. Mesen2 is the gate.
-`mm-headless --ram-dump` and `MM_RAMDUMP` (Mesen) dump the 2 KiB CPU RAM
-every frame, so the first diverging frame can be located.
+
+The release tarball has also run headless on the owner's Alienware (Bazzite,
+glibc 2.43). Its frame hashes are bit-identical to the build machine's, and
+the core takes 1.2–1.45 ms per frame there (about 700–840 fps).
+
+`mm-headless --cdl FILE` accumulates a code/data log over runs: one byte
+per PRG byte, bit 0 executed, bit 1 read as data, in FCEUX's `.cdl` PRG layout.
+The three traces touch 15,195 bytes of 6502 code and 38,856 bytes of data.
 
 Reference-emulator notes:
 
@@ -90,6 +111,9 @@ Reference-emulator notes:
   controllers.
 - In Mesen 2.1.1, `emu.setInput(t, 1)` also overwrites port 0's buttons, so
   the dumper sets port 1 first.
+- The test runner stops after 100 s by default. `ref-run.sh` passes
+  `--timeout=36000`. Mesen can hang on exit after `emu.exit()`, and its
+  output is complete at that point.
 - FCEUX runs from `.tools/fceux` with its bundled libraries and Qt plugins.
 
 ### Gameplay traces
