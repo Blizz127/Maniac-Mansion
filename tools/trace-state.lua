@@ -6,7 +6,8 @@ local dir = assert(os.getenv('MM_STATE_DIR'))
 local log = assert(io.open(dir .. '/events.tsv', 'w'))
 local frame, hits = 0, {}
 local watched = {0x63C6,0x63C5,0x6104,0x6124,0x6C33,0x6C31,0x6C32,
-                 0x6C34,0x6C35,0x6C36,0x6117,0x6118,0x6314,0x6B08,0x6C6A}
+                 0x6C34,0x6C35,0x6C36,0x6117,0x6118,0x6314,0x6B08,0x6C6A,
+                 0x6C49,0x6B0A,0x6100,0x6EBC,0x6EBD,0x6EFF,0x710D,0x72D8}
 local function snapshot(label)
   log:write(string.format('snapshot\t%d\t%s\tpc=%04X',frame,label,memory.getregister('pc')))
   for _, a in ipairs(watched) do log:write(string.format('\t%04X=%02X',a,memory.readbyte(a))) end
@@ -24,7 +25,7 @@ for name,a in pairs(routines) do
  memory.registerexec(a,function()
   hits[name]=hits[name]+1
   if name=='room_change' or name=='room_load' or name=='load_room_opcode' or
-     name=='load_room_ego_opcode' or name=='object_owner_set' then
+     name=='load_room_ego_opcode' or name=='object_owner_set' or name=='inventory_pickup' then
    log:write(string.format('exec\t%d\t%s\tA=%02X\tX=%02X\tY=%02X\troom=%02X\tslot=%02X\n',
     frame,name,memory.getregister('a'),memory.getregister('x'),memory.getregister('y'),
     memory.readbyte(0x63C6),memory.readbyte(0x6314)))
@@ -37,7 +38,12 @@ for _,a in ipairs({0x63C6,0x63C5,0x6104,0x6C33,0x6C31}) do
  end)
 end
 local function step(input)
- joypad.set(1,input or {}); emu.frameadvance(); frame=frame+1
+ local pad={}
+ for _,name in ipairs({'A','B','start','select','up','down','left','right'}) do
+  pad[name]=input and input[name] or false
+ end
+ joypad.set(1,pad); joypad.set(2,{A=false,B=false,start=false,select=false,up=false,down=false,left=false,right=false})
+ emu.frameadvance(); frame=frame+1
 end
 local function wait(n) for i=1,n do step({}) end end
 local function dump(label)
@@ -78,7 +84,9 @@ if steps and steps~='' then
  for line in io.lines(steps) do
   local cmd,a,b,c=line:match('^(%w+)%s+(%S+)%s*(%S*)%s*(%S*)')
   if cmd=='wait' then wait(tonumber(a))
-  elseif cmd=='press' then step({[a]=true}); wait(tonumber(b) or 2)
+  elseif cmd=='press' then
+   for i=1,tonumber(b) or 2 do step({[a]=true}) end
+   wait(3)
   elseif cmd=='seek' then
    local tx,ty=tonumber(a),tonumber(b)
    local sprite=tonumber(c) or 1
@@ -96,4 +104,4 @@ if steps and steps~='' then
 end
 snapshot('end')
 for name,n in pairs(hits) do log:write(string.format('hits\t%s\t%d\n',name,n)) end
-log:close(); emu.exit()
+log:close(); os.exit(0)

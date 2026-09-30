@@ -1,0 +1,43 @@
+# Input-only continuation of port/traces/newgame.mmin using trace-state.lua.
+# Verified USA route: roadside room $2C -> yard/porch $01 -> hall $0A.
+# Coordinates refer to OAM cursor sprite 1; press durations are hold frames.
+seek 8 70
+press A 4
+wait 1000
+dump gate-left
+seek 8 112
+press A 4
+wait 1000
+dump porch
+seek 24 188
+press A 4
+seek 96 116
+press A 4
+wait 600
+dump mat-pulled
+seek 140 180
+press A 4
+seek 112 116
+press A 4
+wait 600
+dump key-picked
+seek 140 188
+press A 4
+seek 30 212
+press A 4
+seek 110 72
+press A 4
+wait 500
+dump key-used
+seek 74 180
+press A 4
+seek 110 72
+press A 4
+wait 600
+dump door-open
+seek 74 196
+press A 4
+seek 110 72
+press A 4
+wait 1200
+dump hall-entry
