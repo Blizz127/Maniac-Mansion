@@ -111,7 +111,7 @@ static void usage(void)
 int main(int argc, char **argv)
 {
     const char *rom = NULL, *input = NULL, *hashes = NULL, *png_dir = NULL, *shots = NULL, *nestest = NULL;
-    const char *ram_dump = NULL, *load_state = NULL, *save_state = NULL;
+    const char *ram_dump = NULL, *load_state = NULL, *save_state = NULL, *wav = NULL;
     long save_state_at = -1;
     bool allow_unknown = false, blargg = false, state = false, index_only = false;
     long frames = -1;
@@ -127,6 +127,7 @@ int main(int argc, char **argv)
         else if (ARG("--png-dir")) png_dir = v;
         else if (ARG("--shots")) shots = v;
         else if (ARG("--ram-dump")) ram_dump = v;
+        else if (ARG("--wav")) wav = v;
         else if (ARG("--load-state")) load_state = v;
         else if (ARG("--save-state")) {
             char *colon;
@@ -206,12 +207,24 @@ int main(int argc, char **argv)
         fprintf(hf, "# mmfb1%s rom=%s frames=%ld\n", index_only ? "i" : "", cart.sha256, frames);
     }
     FILE *rf = ram_dump ? fopen(ram_dump, "wb") : NULL;
+    FILE *wf = wav ? fopen(wav, "wb") : NULL;
+    uint32_t wav_n = 0;
+    if (wf) {
+        nes_audio_config(&nes, 48000);
+        fwrite((uint8_t[44]){0}, 1, 44, wf); /* header patched at the end */
+    }
     for (long f = 0; f < frames; f++) {
         uint8_t pads[2];
         trace_at(&tr, (uint32_t)f, pads);
         nes_set_pad(&nes, 0, pads[0]);
         nes_set_pad(&nes, 1, pads[1]);
         nes_run_frame(&nes);
+        if (wf) {
+            static int16_t ab[8192];
+            size_t n = nes_audio_take(&nes, ab, 8192);
+            fwrite(ab, 2, n, wf);
+            wav_n += (uint32_t)n;
+        }
         nes_audio_take(&nes, NULL, (size_t)-1);
         uint64_t h = fb_hash(nes.ppu.fb, index_only ? 0x3F : 0x1FF);
         if (rf)
@@ -256,6 +269,16 @@ int main(int argc, char **argv)
         fclose(hf);
     if (rf)
         fclose(rf);
+    if (wf) { /* 48 kHz mono s16 WAV */
+        uint32_t data = wav_n * 2, riff = 36 + data, rate = 48000, brate = 96000, fmt = 16;
+        uint16_t pcm = 1, ch = 1, align = 2, bits = 16;
+        rewind(wf);
+        fwrite("RIFF", 1, 4, wf); fwrite(&riff, 4, 1, wf); fwrite("WAVEfmt ", 1, 8, wf);
+        fwrite(&fmt, 4, 1, wf); fwrite(&pcm, 2, 1, wf); fwrite(&ch, 2, 1, wf); fwrite(&rate, 4, 1, wf);
+        fwrite(&brate, 4, 1, wf); fwrite(&align, 2, 1, wf); fwrite(&bits, 2, 1, wf);
+        fwrite("data", 1, 4, wf); fwrite(&data, 4, 1, wf);
+        fclose(wf);
+    }
     trace_free(&tr);
     cart_free(&cart);
     return 0;
