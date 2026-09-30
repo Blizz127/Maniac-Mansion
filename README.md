@@ -103,19 +103,24 @@ looks or sounds wrong.
 - **Stage 2 (planned):** statically recompiled C of the game's own routines,
   as the decompilation reviews them, co-simulated against Stage 1.
 
-## Building from source
+## Public decompilation baseline
+
+The matching decompilation tooling and address documentation are public. Current
+port development lives in the private `Blizz127/maniac-mansion-port-private`
+repository; public binary releases occur at milestones. The inherited `port/`
+source here is historical and is not updated by the decomp baseline.
+
+With Python 3, Make, cc65 and your own USA ROM at `rom/original.nes`:
 
 ```sh
-cmake -S port -B build/port
-cmake --build build/port -j
-build/port/maniac-mansion-port --rom "/path/to/Maniac Mansion (USA).nes"
+make identify
+make
+make test
 ```
 
-This needs CMake, a C11 compiler and the SDL2 development package. Release
-tarballs are built in a container with `port/tools/package-container.sh`
-(see [docs/port-package.md](docs/port-package.md)). `port/tests/gate.sh` runs
-the full verification gate. Test ROMs and reference-emulator output stay in
-the ignored `build/` directory.
+The generated ROM must match every input byte. ROMs, extracted assets, generated
+assembly and emulator output stay local. See the [decomp build guide](docs/decomp.md),
+[engine investigation](docs/engine.md), and [SCUMM state map](docs/scumm_state.md).
 
 ## Credits
 

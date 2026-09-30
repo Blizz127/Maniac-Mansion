@@ -1,0 +1,167 @@
+{
+  "prg_bytes": 262144,
+  "ranges": [
+    {
+      "symbol": "reset_entry",
+      "start": 251801,
+      "end": 251936,
+      "kind": "code",
+      "evidence": "docs/engine.md#reviewed-usa-routines"
+    },
+    {
+      "symbol": "fill_memory",
+      "start": 251936,
+      "end": 251962,
+      "kind": "code",
+      "evidence": "docs/engine.md#reviewed-usa-routines"
+    },
+    {
+      "symbol": "switch_prg_bank",
+      "start": 253829,
+      "end": 253884,
+      "kind": "code",
+      "evidence": "docs/engine.md#reviewed-usa-routines"
+    },
+    {
+      "symbol": "nmi_dispatch",
+      "start": 254818,
+      "end": 254821,
+      "kind": "code",
+      "evidence": "docs/engine.md#reviewed-usa-routines"
+    },
+    {
+      "symbol": "nmi_game",
+      "start": 254821,
+      "end": 254992,
+      "kind": "code",
+      "evidence": "docs/engine.md#reviewed-usa-routines"
+    },
+    {
+      "symbol": "mmc1_write_prg",
+      "start": 262048,
+      "end": 262068,
+      "kind": "code",
+      "evidence": "docs/engine.md#reviewed-usa-routines"
+    },
+    {
+      "symbol": "mmc1_write_control",
+      "start": 262072,
+      "end": 262094,
+      "kind": "code",
+      "evidence": "docs/engine.md#reviewed-usa-routines"
+    },
+    {
+      "symbol": "mmc1_initialize",
+      "start": 262096,
+      "end": 262137,
+      "kind": "code",
+      "evidence": "docs/engine.md#reviewed-usa-routines"
+    },
+    {
+      "symbol": "vm_dispatch",
+      "start": 246819,
+      "end": 246860,
+      "kind": "code",
+      "evidence": "docs/engine.md#vm-and-controller-discovery"
+    },
+    {
+      "symbol": "vm_fetch_word",
+      "start": 246860,
+      "end": 246863,
+      "kind": "code",
+      "evidence": "docs/engine.md#vm-and-controller-discovery"
+    },
+    {
+      "symbol": "vm_fetch_byte",
+      "start": 246863,
+      "end": 246904,
+      "kind": "code",
+      "evidence": "docs/engine.md#vm-and-controller-discovery"
+    },
+    {
+      "symbol": "vm_restore_pc",
+      "start": 246904,
+      "end": 246929,
+      "kind": "code",
+      "evidence": "docs/engine.md#vm-and-controller-discovery"
+    },
+    {
+      "symbol": "vm_save_pc",
+      "start": 246929,
+      "end": 246954,
+      "kind": "code",
+      "evidence": "docs/engine.md#vm-and-controller-discovery"
+    },
+    {
+      "symbol": "read_controllers",
+      "start": 260968,
+      "end": 261038,
+      "kind": "code",
+      "evidence": "docs/engine.md#vm-and-controller-discovery"
+    },
+    {
+      "symbol": "consume_a_press",
+      "start": 261038,
+      "end": 261047,
+      "kind": "code",
+      "evidence": "docs/engine.md#vm-and-controller-discovery"
+    },
+    {
+      "symbol": "consume_menu_press",
+      "start": 261047,
+      "end": 261054,
+      "kind": "code",
+      "evidence": "docs/engine.md#vm-and-controller-discovery"
+    },
+    {
+      "symbol": "opcode_handler_high",
+      "start": 261527,
+      "end": 261783,
+      "kind": "data",
+      "evidence": "docs/engine.md#vm-and-controller-discovery"
+    },
+    {
+      "symbol": "opcode_handler_low",
+      "start": 261783,
+      "end": 262039,
+      "kind": "data",
+      "evidence": "docs/engine.md#vm-and-controller-discovery"
+    },
+    {
+      "symbol": "nmi_bank0_services",
+      "start": 772,
+      "end": 842,
+      "kind": "code",
+      "evidence": "docs/engine.md#vm-and-controller-discovery"
+    },
+    {
+      "symbol": "ppu_command_dispatch",
+      "start": 842,
+      "end": 888,
+      "kind": "code",
+      "evidence": "docs/engine.md#vm-and-controller-discovery"
+    },
+    {
+      "symbol": "sound_tick",
+      "start": 3079,
+      "end": 3145,
+      "kind": "code",
+      "evidence": "docs/engine.md#vm-and-controller-discovery"
+    },
+    {
+      "symbol": "vm_jump_relative",
+      "start": 247757,
+      "end": 247785,
+      "kind": "code",
+      "evidence": "docs/engine.md#vm-and-controller-discovery"
+    },
+    {
+      "symbol": "vm_stop_object",
+      "start": 247785,
+      "end": 247815,
+      "kind": "code",
+      "evidence": "docs/engine.md#vm-and-controller-discovery"
+    }
+  ],
+  "payload_sha1": "8a8bbecc77fdf59826257754f357d38a7f825971"
+}

@@ -1,0 +1,110 @@
+{
+  "source": {
+    "kind": "No-Intro metadata mirror; not direct authoritative DAT",
+    "repository": "https://github.com/libretro/libretro-database",
+    "revision": "d5bae90b22018ce3c9c5a8eff4141a4768c8dd5f",
+    "path": "metadat/no-intro/Nintendo - Nintendo Entertainment System.dat",
+    "dat_version": "2026.08.01"
+  },
+  "dumps": [
+    {
+      "region": "Europe",
+      "file": {
+        "size": 262160,
+        "crc32": "7eea40b5",
+        "sha1": "ba8671e154a50d1151510aa0200af6d1f312d4e2"
+      },
+      "payload": {
+        "size": 262144,
+        "crc32": "f59cfc3d",
+        "sha1": "e22854daf598b94c3f8620d42e959d4bf2c81bdd"
+      }
+    },
+    {
+      "region": "France",
+      "file": {
+        "size": 262160,
+        "crc32": "7fc1b776",
+        "sha1": "0ae67bf744217382af53eb3359957f290943aa34"
+      },
+      "payload": {
+        "size": 262144,
+        "crc32": "f4b70bfe",
+        "sha1": "a261161ba810e1e5fc6857e3c574702f57036892"
+      }
+    },
+    {
+      "region": "Germany",
+      "file": {
+        "size": 262160,
+        "crc32": "eb9c2428",
+        "sha1": "8cd99228f64d560b4add0310a234997c7b1b7ff8"
+      },
+      "payload": {
+        "size": 262144,
+        "crc32": "60ea98a0",
+        "sha1": "84cde9618cb026b98c2ffff36ddc2326099c3155"
+      }
+    },
+    {
+      "region": "Italy",
+      "file": {
+        "size": 262160,
+        "crc32": "5724280a",
+        "sha1": "34197781565f0ca9646298f8d8495c9c4ed0ad57"
+      },
+      "payload": {
+        "size": 262144,
+        "crc32": "dc529482",
+        "sha1": "f78c4c9a33b5cedce9cf9deefe15d2c9e5b9e3e1"
+      }
+    },
+    {
+      "region": "Spain",
+      "file": {
+        "size": 262160,
+        "crc32": "7ec41342",
+        "sha1": "b89feb08c7ec29239c5a9d6e76bdc5b4e5fdd60d"
+      },
+      "payload": {
+        "size": 262144,
+        "crc32": "f5b2afca",
+        "sha1": "8b6311003d26e3c90dc8a46f1a8f4b90e5078696"
+      }
+    },
+    {
+      "region": "Sweden",
+      "file": {
+        "size": 262160,
+        "crc32": "b45d66ed",
+        "sha1": "ca2d4552cc9753ccea56a5670002187bbbeac866"
+      },
+      "payload": {
+        "size": 262144,
+        "crc32": "3f2bda65",
+        "sha1": "9fe2047809314f14fc1ccda622782bc02d35110f"
+      }
+    },
+    {
+      "region": "USA",
+      "file": {
+        "size": 262160,
+        "crc32": "4207c1f9",
+        "sha1": "a421c563742f5f33bcf922b065ad5ed3d969977a",
+        "sha256": "e59f95a80497779b861daa26e1b890929fd2f9939e78003898d9bff3ea3f6db2"
+      },
+      "payload": {
+        "size": 262144,
+        "crc32": "0d9f5bd1",
+        "sha1": "8a8bbecc77fdf59826257754f357d38a7f825971",
+        "sha256": "84f5377980d2fd44d71faec42f858b1e83540c2f55aba9236c3279d6dde8592a"
+      },
+      "authoritative": {
+        "url": "https://datomatic.no-intro.org/index.php?page=show_record&s=45&n=1360",
+        "checked_utc": "2026-09-29",
+        "status": "Headered and Headerless: Trusted (4) (Verified)",
+        "header_note": "NES 2.0 XML 2021-12-25; NES Header Repair Tool commit 77920fc"
+      }
+    }
+  ]
+}

@@ -17,3 +17,13 @@
 *.mmo
 __pycache__/
 *.pyc
+
+# Trace state, screenshots and full disassembly listings remain local.
+*.asm
+*.ram
+*.raw
+*.mst
+*.mmst
+*.ppm
+*.png
+*.wav
