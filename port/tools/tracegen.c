@@ -132,8 +132,16 @@ int main(int argc, char **argv)
                 step(0);
         } else if (!strcmp(cmd, "seek")) {
             int s = atoi(a1), tx = atoi(a2), ty = atoi(a3);
+            int lastx = -1, lasty = -1, still = 0;
             for (int guard = 0; guard < 600; guard++) {
                 int x = nes.ppu.oam[s * 4 + 3], y = nes.ppu.oam[s * 4];
+                /* the pointer is clamped at the screen edges: stop when it
+                 * has not moved for 12 frames of input */
+                still = (x == lastx && y == lasty) ? still + 1 : 0;
+                lastx = x;
+                lasty = y;
+                if (still >= 12)
+                    break;
                 int dx = tx - x, dy = ty - y;
                 if (abs(dx) <= 2 && abs(dy) <= 2)
                     break;
