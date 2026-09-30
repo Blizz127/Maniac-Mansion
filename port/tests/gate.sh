@@ -55,6 +55,11 @@ if [ -s "$ref/$t.mesen.nmi" ]; then
 else
     add mesen_newgame_ram skipped
 fi
+if [ -s "$ref/$t.mesen.ppu" ]; then
+    # nametables, palette, OAM and CHR-RAM at every 30th NMI entry
+    $H --rom "$rom" --input "$repo/port/traces/$t.mmin" --ppu-dump "$out/$t.ppu" >/dev/null 2>&1
+    if cmp -s "$out/$t.ppu" "$ref/$t.mesen.ppu"; then add mesen_newgame_ppu "pass $(($(stat -c %s "$out/$t.ppu") / 10528)) PPU memory snapshots identical"; else add mesen_newgame_ppu FAIL; fi
+fi
 if command -v xvfb-run >/dev/null; then
     "$here/test_devmenu.sh" "$b" "$rom" "$out/devmenu" >"$out/devmenu.txt" 2>&1 && add devmenu "pass $(grep -c PASS "$out/devmenu.txt") checks" || add devmenu FAIL
 else

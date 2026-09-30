@@ -36,9 +36,9 @@ static void vram_write(nes_t *nes, uint16_t a, uint8_t v)
         nes->ppu.ciram[mmc1_nt_addr(nes, a)] = v;
     else {
         uint8_t i = a & 0x1F;
-        if ((i & 0x13) == 0x10)
-            i &= 0x0F;
         nes->ppu.palette[i] = v & 0x3F;
+        if ((i & 0x03) == 0) /* $3F00/04/08/0C and $3F10/14/18/1C are one cell */
+            nes->ppu.palette[i ^ 0x10] = v & 0x3F;
     }
 }
 
