@@ -80,6 +80,13 @@ An optional **dev menu** (fast-forward speed, screenshots, quick save and
 load, display options) is off by default. Start with `MM_DEV_MENU=1`, then
 press **F8**, or **Back+Start** on the same controller.
 
+## Milestones and progress
+
+Public milestone status, what is verified and what is not, and a dated changelog live on the
+[Milestones wiki page](https://github.com/Blizz127/Maniac-Mansion/wiki/Milestones).
+Milestone 1, *boots and plays*, is released as
+[`mm-r2-17dd59ee`](https://github.com/Blizz127/Maniac-Mansion/releases/tag/mm-r2-17dd59ee).
+
 ## Status
 
 This is an alpha. The whole game is expected to run, because the runtime
