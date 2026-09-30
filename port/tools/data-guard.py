@@ -23,8 +23,13 @@ def main():
     rom = open(a.rom, "rb").read()
     prg = rom[16:]
     windows = {prg[i:i + WIN] for i in range(0, len(prg) - WIN + 1)}
-    # Runs of one repeated byte (padding) are not evidence of copying.
-    windows = {w for w in windows if len(set(w)) > 2}
+    # Padding (runs of one or two byte values) and counting sequences such
+    # as "0123...ABC" digit tables occur in unrelated binaries; they are not
+    # evidence of copying.
+    def generic(w):
+        steps = sum(1 for a, b in zip(w, w[1:]) if b - a in (0, 1))
+        return len(set(w)) <= 2 or steps >= len(w) - 4
+    windows = {w for w in windows if not generic(w)}
     bad = []
     for f in a.files:
         low = f.lower()
