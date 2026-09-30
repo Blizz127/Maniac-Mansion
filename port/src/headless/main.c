@@ -34,12 +34,72 @@ static long watch_lo = -1, watch_hi = -1;
 static char watch_log[4096];
 static size_t watch_len;
 
+static void cdl_mark(nes_t *nes, uint16_t addr, uint8_t bit);
+static uint8_t *cdl;
+static uint16_t cur_pc;
+static int cur_len;
+
 static void watch_hook(nes_t *nes, uint16_t addr, uint8_t v, bool write)
 {
+    if (cdl && !write && addr >= 0x8000 && (uint16_t)(addr - cur_pc) >= (uint16_t)cur_len)
+        cdl_mark(nes, addr, 0x02);
+    if (watch_lo < 0)
+        return;
     if (addr < watch_lo || addr > watch_hi || watch_len > sizeof watch_log - 16)
         return;
     watch_len += (size_t)snprintf(watch_log + watch_len, sizeof watch_log - watch_len, write ? " W%04X=%02X" : " R%04X=%02X",
                                   addr, v);
+}
+
+static FILE *nmi_dump, *ppu_dump;
+static int ppu_every = 30, nmi_count;
+static uint16_t nmi_vec;
+
+/* Code/data log (FCEUX .cdl layout, PRG part): one byte per PRG byte,
+ * bit 0 = executed as code (opcode or operand), bit 1 = read as data.
+ * Metadata only: it records which ROM bytes were used, not their values. */
+static int op_len(uint8_t op)
+{
+    /* 6502 instruction length by addressing mode (official + unofficial) */
+    uint8_t lo = op & 0x1F;
+    if (op == 0x20) return 3;                                  /* JSR abs */
+    if (op == 0x00 || op == 0x40 || op == 0x60) return 1;      /* BRK/RTI/RTS */
+    switch (lo) {
+    case 0x00: case 0x02: return op & 0x80 ? 2 : 1;          /* #imm (LDY/CPY/CPX/NOP) or implied */
+    case 0x01: case 0x03: case 0x04: case 0x05: case 0x06: case 0x07:
+    case 0x09: case 0x0B: case 0x10: case 0x11: case 0x13: case 0x14:
+    case 0x15: case 0x16: case 0x17: return 2;
+    case 0x08: case 0x0A: case 0x12: case 0x18: case 0x1A: return 1;
+    default: return 3;                                         /* abs, abs,X/Y, (ind) */
+    }
+}
+
+static void cdl_mark(nes_t *nes, uint16_t addr, uint8_t bit)
+{
+    if (addr < 0x8000)
+        return;
+    int bank = mmc1_prg_bank_at(nes, addr);
+    cdl[((size_t)bank << 14) | (addr & 0x3FFF)] |= bit;
+}
+
+static void nmi_hook(nes_t *nes, void *ud)
+{
+    (void)ud;
+    if (nmi_dump && nes->cpu.pc == nmi_vec)
+        fwrite(nes->ram, 1, sizeof nes->ram, nmi_dump);
+    if (ppu_dump && nes->cpu.pc == nmi_vec && ++nmi_count % ppu_every == 0) {
+        fwrite(nes->ppu.ciram, 1, sizeof nes->ppu.ciram, ppu_dump);
+        fwrite(nes->ppu.palette, 1, sizeof nes->ppu.palette, ppu_dump);
+        fwrite(nes->ppu.oam, 1, sizeof nes->ppu.oam, ppu_dump);
+        fwrite(nes->chrram, 1, sizeof nes->chrram, ppu_dump);
+    }
+    if (cdl) {
+        uint8_t op = bus_peek(nes, nes->cpu.pc);
+        cur_pc = nes->cpu.pc;
+        cur_len = op_len(op);
+        for (int i = 0; i < cur_len; i++)
+            cdl_mark(nes, (uint16_t)(cur_pc + i), 0x01);
+    }
 }
 
 static int run_nestest(nes_t *nes, const char *log_path)
@@ -111,7 +171,7 @@ static void usage(void)
 int main(int argc, char **argv)
 {
     const char *rom = NULL, *input = NULL, *hashes = NULL, *png_dir = NULL, *shots = NULL, *nestest = NULL;
-    const char *ram_dump = NULL, *load_state = NULL, *save_state = NULL, *wav = NULL;
+    const char *ram_dump = NULL, *load_state = NULL, *save_state = NULL, *wav = NULL, *cdl_path = NULL;
     long save_state_at = -1;
     bool allow_unknown = false, blargg = false, state = false, index_only = false;
     long frames = -1;
@@ -128,6 +188,10 @@ int main(int argc, char **argv)
         else if (ARG("--shots")) shots = v;
         else if (ARG("--ram-dump")) ram_dump = v;
         else if (ARG("--wav")) wav = v;
+        else if (ARG("--nmi-dump")) nmi_dump = fopen(v, "wb");
+        else if (ARG("--ppu-dump")) ppu_dump = fopen(v, "wb");
+        else if (ARG("--ppu-every")) ppu_every = atoi(v);
+        else if (ARG("--cdl")) cdl_path = v;
         else if (ARG("--load-state")) load_state = v;
         else if (ARG("--save-state")) {
             char *colon;
@@ -187,8 +251,21 @@ int main(int argc, char **argv)
     if (blargg)
         return run_blargg(&nes, frames > 0 ? (int)frames : 3600);
 
-    if (watch_lo >= 0)
+    if (cdl_path) {
+        cdl = calloc(1, cart.prg_size);
+        FILE *cf = fopen(cdl_path, "rb"); /* accumulate over runs */
+        if (cf) {
+            if (fread(cdl, 1, cart.prg_size, cf) != cart.prg_size)
+                memset(cdl, 0, cart.prg_size);
+            fclose(cf);
+        }
+    }
+    if (watch_lo >= 0 || cdl)
         nes.mem_hook = watch_hook;
+    if (nmi_dump || cdl || ppu_dump) { /* RAM at each NMI handler entry: an exact sample point */
+        nmi_vec = bus_peek(&nes, 0xFFFA) | (bus_peek(&nes, 0xFFFB) << 8);
+        nes.exec_hook = nmi_hook;
+    }
     trace_t tr = {0};
     if (input && !trace_load(&tr, input, err, sizeof err)) {
         fprintf(stderr, "error: %s\n", err);
@@ -239,7 +316,7 @@ int main(int argc, char **argv)
         }
         if (hf) {
             fprintf(hf, "%ld %016" PRIx64, f, h);
-            if (watch_lo >= 0) {
+            if (watch_lo >= 0 && hf) {
                 fprintf(hf, " watch:%s", watch_len ? watch_log : " -");
                 watch_len = 0;
                 watch_log[0] = 0;
@@ -269,6 +346,23 @@ int main(int argc, char **argv)
         fclose(hf);
     if (rf)
         fclose(rf);
+    if (nmi_dump)
+        fclose(nmi_dump);
+    if (ppu_dump)
+        fclose(ppu_dump);
+    if (cdl) {
+        FILE *cf = fopen(cdl_path, "wb");
+        size_t code = 0, data = 0;
+        for (size_t i = 0; i < cart.prg_size; i++) {
+            code += cdl[i] & 1;
+            data += (cdl[i] >> 1) & 1;
+        }
+        if (cf) {
+            fwrite(cdl, 1, cart.prg_size, cf);
+            fclose(cf);
+        }
+        fprintf(stderr, "cdl: %s: %zu code bytes, %zu data bytes of %zu PRG\n", cdl_path, code, data, cart.prg_size);
+    }
     if (wf) { /* 48 kHz mono s16 WAV */
         uint32_t data = wav_n * 2, riff = 36 + data, rate = 48000, brate = 96000, fmt = 16;
         uint16_t pcm = 1, ch = 1, align = 2, bits = 16;

@@ -35,9 +35,11 @@ mesen)
     [ -f "$home/.config/Mesen2/settings.json" ] || cp "$here/mesen-settings.json" "$home/.config/Mesen2/settings.json"
     raw=$work/mesen-$$.raw
     HOME=$home XDG_CONFIG_HOME=$home/.config SDL_AUDIODRIVER=dummy \
-        MM_RAW=$raw MM_INPUT=$trace MM_RAMDUMP="${MM_RAMDUMP:-}" \
+        MM_RAW=$raw MM_INPUT=$trace MM_RAMDUMP="${MM_RAMDUMP:-}" MM_WRITELOG="${MM_WRITELOG:-}" MM_WATCH="${MM_WATCH:-4000-4017}" \
+        MM_NMIDUMP="${MM_NMIDUMP:-}" MM_NOSCREEN="${MM_NOSCREEN:-}" \
+        MM_PPUDUMP="${MM_PPUDUMP:-}" MM_PPUEVERY="${MM_PPUEVERY:-30}" \
         xvfb-run -a "$mesen" --testRunner "$here/ref-mesen.lua" "$rom" --timeout=36000 >"$work/mesen.log" 2>&1 || true
-    python3 "$here/framehash.py" raw "$raw" --bpp 2 >"$out"
+    if [ "${MM_NOSCREEN:-}" = 1 ]; then : >"$out"; else python3 "$here/framehash.py" raw "$raw" --bpp 2 >"$out"; fi
     rm -f "$raw"
     ;;
 *)

@@ -20,7 +20,8 @@ void nes_power(nes_t *nes, uint8_t ram_fill)
 {
     memset(nes->ram, ram_fill, sizeof nes->ram);
     memset(nes->chrram, 0, sizeof nes->chrram);
-    nes->master = 0;
+    /* The CPU master clock starts one CPU cycle in (Mesen2: += cpuDivider). */
+    nes->master = 12;
     nes->open_bus = 0;
     nes->pad_strobe = false;
     nes->pad_shift[0] = nes->pad_shift[1] = 0;

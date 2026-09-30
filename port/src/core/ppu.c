@@ -50,6 +50,11 @@ static inline uint8_t pal_read(const ppu_t *p, uint8_t i)
     return p->palette[i];
 }
 
+/* Power-on PPU position, as in Mesen2: the last dot of the pre-render line,
+ * so the first dot executed is scanline 0, dot 0. */
+int ppu_power_scanline = -1, ppu_power_dot = 340;
+uint64_t ppu_power_master = 0;
+
 void ppu_power(ppu_t *p)
 {
     memset(p, 0, sizeof *p);
@@ -59,8 +64,9 @@ void ppu_power(ppu_t *p)
         0x09, 0x01, 0x34, 0x03, 0x00, 0x04, 0x00, 0x14, 0x08, 0x3A, 0x00, 0x02, 0x00, 0x20, 0x2C, 0x08,
     };
     memcpy(p->palette, boot_pal, sizeof boot_pal);
-    p->scanline = -1;
-    p->dot = 0;
+    p->scanline = ppu_power_scanline;
+    p->dot = ppu_power_dot;
+    p->master = ppu_power_master;
 }
 
 void ppu_reset(ppu_t *p)

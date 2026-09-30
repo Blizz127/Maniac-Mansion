@@ -52,28 +52,88 @@ end
 local rd_path = os.getenv("MM_RAMDUMP")
 local ramdump = rd_path and rd_path ~= "" and assert(io.open(rd_path, "wb"))
 
+-- Optional: MM_WRITELOG=/abs/file with MM_WATCH=4000-4017 logs CPU writes in
+-- that range, one line per frame, in mm-headless --watch format (writes only).
+local wl_path = os.getenv("MM_WRITELOG")
+local writelog = wl_path and wl_path ~= "" and assert(io.open(wl_path, "w"))
+local wlines = {}
+if writelog then
+  local lo, hi = (os.getenv("MM_WATCH") or "4000-4017"):match("(%x+)-(%x+)")
+  emu.addMemoryCallback(function(addr, value)
+    wlines[#wlines + 1] = string.format(" W%04X=%02X", addr, value)
+  end, emu.callbackType.write, tonumber(lo, 16), tonumber(hi, 16))
+end
+
+-- Optional: MM_NMIDUMP=/abs/file writes the 2 KiB CPU RAM each time the CPU
+-- is about to execute the NMI handler's first instruction (an exact,
+-- instruction-aligned sample point, unlike the end-of-frame event).
+-- MM_NOSCREEN=1 skips the screen capture (much faster).
+local nd_path = os.getenv("MM_NMIDUMP")
+local nmidump = nd_path and nd_path ~= "" and assert(io.open(nd_path, "wb"))
+local noscreen = os.getenv("MM_NOSCREEN") == "1"
+-- Optional: MM_PPUDUMP=/abs/file dumps PPU memory at every MM_PPUEVERY-th
+-- NMI entry: nametable RAM (2 KiB), palette (32), OAM (256), CHR-RAM (8 KiB).
+local pd_path = os.getenv("MM_PPUDUMP")
+local ppudump = pd_path and pd_path ~= "" and assert(io.open(pd_path, "wb"))
+local ppuevery = tonumber(os.getenv("MM_PPUEVERY")) or 30
+local nmicount = 0
+local function dump_mem(fh, mt, len)
+  local r = {}
+  for a = 0, len - 1 do r[a + 1] = emu.read(a, mt) end
+  for i = 1, len, 1024 do fh:write(string.char(table.unpack(r, i, math.min(i + 1023, len)))) end
+end
+if ppudump then
+  local vec = emu.read(0xFFFA, emu.memType.nesMemory) | (emu.read(0xFFFB, emu.memType.nesMemory) << 8)
+  emu.addMemoryCallback(function()
+    nmicount = nmicount + 1
+    if nmicount % ppuevery == 0 then
+      dump_mem(ppudump, emu.memType.nesNametableRam, 2048)
+      dump_mem(ppudump, emu.memType.nesPaletteRam, 32)
+      dump_mem(ppudump, emu.memType.nesSpriteRam, 256)
+      dump_mem(ppudump, emu.memType.nesChrRam, 8192)
+    end
+  end, emu.callbackType.exec, vec, vec)
+end
+if nmidump then
+  local vec = emu.read(0xFFFA, emu.memType.nesMemory) | (emu.read(0xFFFB, emu.memType.nesMemory) << 8)
+  emu.addMemoryCallback(function()
+    local r = {}
+    for a = 0, 2047 do r[a + 1] = emu.read(a, emu.memType.nesInternalRam) end
+    nmidump:write(string.char(table.unpack(r, 1, 1024)), string.char(table.unpack(r, 1025, 2048)))
+  end, emu.callbackType.exec, vec, vec)
+end
+
 emu.addEventCallback(apply, emu.eventType.inputPolled)
 emu.addEventCallback(function()
-  local buf = emu.getScreenBuffer()
-  assert(#buf == 256 * 240, "unexpected screen size " .. #buf)
-  local parts = {}
-  for y = 0, 239 do
-    local row = {}
-    for x = 1, 256 do
-      row[x] = buf[y * 256 + x] & 0x1FF
+  if not noscreen then
+    local buf = emu.getScreenBuffer()
+    assert(#buf == 256 * 240, "unexpected screen size " .. #buf)
+    local parts = {}
+    for y = 0, 239 do
+      local row = {}
+      for x = 1, 256 do
+        row[x] = buf[y * 256 + x] & 0x1FF
+      end
+      parts[#parts + 1] = string.pack(string.rep("<I2", 256), table.unpack(row))
     end
-    parts[#parts + 1] = string.pack(string.rep("<I2", 256), table.unpack(row))
+    out:write(table.concat(parts))
   end
-  out:write(table.concat(parts))
   if ramdump then
     local r = {}
     for a = 0, 2047 do r[a + 1] = emu.read(a, emu.memType.nesInternalRam) end
     ramdump:write(string.char(table.unpack(r, 1, 1024)), string.char(table.unpack(r, 1025, 2048)))
   end
+  if writelog then
+    writelog:write(frame, " watch:", #wlines > 0 and table.concat(wlines) or " -", "\n")
+    wlines = {}
+  end
   frame = frame + 1
   if frame >= frames then
     out:close()
     if ramdump then ramdump:close() end
+    if nmidump then nmidump:close() end
+    if ppudump then ppudump:close() end
+    if writelog then writelog:close() end
     emu.exit(0)
   end
 end, emu.eventType.endFrame)

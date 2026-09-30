@@ -18,6 +18,11 @@ Controller: A = A, B or X = B, Back/View = Select, Start/Menu = Start,
   Steam Deck / Legion Go pads work in Game Mode (Steam's ignore list is
   corrected at start-up; see port.log).
 
+Dev menu (off by default): MM_DEV_MENU=1 ./launch.sh, then F8 or Back+Start
+  on the same pad. Options: fast-forward speed, screenshot, quick save/load
+  (host-side slot, the game's battery save is untouched), pixel aspect,
+  overscan crop. Warp/cheat pages fill in as entries are verified.
+
 Battery save: ~/.local/share/maniac-mansion-port/saves/maniac-mansion-usa.sav
 Config:       ~/.config/maniac-mansion-port/config.ini (see config.example.ini)
 Log:          ~/.local/state/maniac-mansion-port/port.log
