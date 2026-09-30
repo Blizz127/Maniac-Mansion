@@ -2,6 +2,8 @@
  * CHR-RAM, 8 KiB battery PRG-RAM at $6000. */
 #include "nes.h"
 
+static void update_banks(nes_t *nes);
+
 void mmc1_power(nes_t *nes)
 {
     mmc1_t *m = &nes->mmc1;
@@ -13,9 +15,20 @@ void mmc1_power(nes_t *nes)
     m->prg = 0;
     m->last_write_cycle = 0;
     m->mmc1a = false;
+    update_banks(nes);
 }
 
 static unsigned prg_banks16(nes_t *nes) { return (unsigned)(nes->prg_size >> 14); }
+
+int mmc1_prg_bank_at(nes_t *nes, uint16_t addr);
+
+static void update_banks(nes_t *nes)
+{
+    nes->mmc1.prg_lo = nes->prg + ((size_t)mmc1_prg_bank_at(nes, 0x8000) << 14);
+    nes->mmc1.prg_hi = nes->prg + ((size_t)mmc1_prg_bank_at(nes, 0xC000) << 14);
+}
+
+void mmc1_refresh(nes_t *nes) { update_banks(nes); }
 
 int mmc1_prg_bank_at(nes_t *nes, uint16_t addr)
 {
@@ -48,8 +61,7 @@ uint8_t mmc1_prg_read(nes_t *nes, uint16_t addr, bool *driven)
 {
     if (addr >= 0x8000) {
         *driven = true;
-        int bank = mmc1_prg_bank_at(nes, addr);
-        return nes->prg[((size_t)bank << 14) | (addr & 0x3FFF)];
+        return (addr & 0x4000 ? nes->mmc1.prg_hi : nes->mmc1.prg_lo)[addr & 0x3FFF];
     }
     if (addr >= 0x6000 && prgram_enabled(nes)) {
         *driven = true;
@@ -68,6 +80,7 @@ static void mmc1_reg(nes_t *nes, uint16_t addr, uint8_t v)
     case 2: m->chr1 = v; break;
     case 3: m->prg = v; break;
     }
+    update_banks(nes);
 }
 
 void mmc1_prg_write(nes_t *nes, uint16_t addr, uint8_t v)
@@ -92,6 +105,7 @@ void mmc1_prg_write(nes_t *nes, uint16_t addr, uint8_t v)
         m->shift = 0;
         m->shift_n = 0;
         m->ctrl |= 0x0C;
+        update_banks(nes);
         return;
     }
     m->shift |= (v & 1) << m->shift_n;

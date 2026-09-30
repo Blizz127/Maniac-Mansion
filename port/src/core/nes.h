@@ -55,9 +55,11 @@ typedef struct {
     uint16_t bg_lo, bg_hi, at_lo, at_hi;
     uint8_t nt_latch, at_latch, pt_lo_latch, pt_hi_latch;
 
-    /* sprites for the line being drawn */
+    /* sprites for the line being drawn, pre-resolved per pixel at
+     * evaluation: bits 0-4 palette index (0x10-0x1F, 0 = transparent),
+     * bit 6 behind background, bit 7 pixel belongs to sprite 0 */
     int spr_count;
-    uint8_t spr_lo[8], spr_hi[8], spr_attr[8], spr_x[8];
+    uint8_t spr_line[NES_W];
     bool spr0_on_line;
     /* next line (evaluated during the current line) */
     int nspr_count;
@@ -124,6 +126,8 @@ typedef struct {
     float hp_prev_in, hp_prev_out, lp_prev;
     int16_t *out;
     size_t out_len, out_cap;
+    float mix;       /* current DAC output */
+    bool mix_dirty;  /* recompute mix before the next sample */
 } apu_t;
 
 typedef struct {
@@ -131,6 +135,7 @@ typedef struct {
     uint8_t ctrl, chr0, chr1, prg;
     uint64_t last_write_cycle;
     bool mmc1a; /* false: MMC1B (PRG-RAM enable in $E000 bit 4) */
+    const uint8_t *prg_lo, *prg_hi; /* banks mapped at $8000 and $C000 */
 } mmc1_t;
 
 typedef struct nes {
@@ -171,6 +176,13 @@ void nes_audio_config(nes_t *nes, int sample_rate);
 /* Drains generated audio; returns the number of mono s16 samples copied. */
 size_t nes_audio_take(nes_t *nes, int16_t *dst, size_t max);
 
+/* Snapshots (host-side quick save; never the game's own save format).
+ * A state is only valid for the same build and ROM: it records a layout
+ * signature and the PRG SHA-256 prefix and is refused otherwise. */
+size_t nes_state_size(void);
+void nes_state_save(const nes_t *nes, void *buf, const uint8_t prg_id[8]);
+bool nes_state_load(nes_t *nes, const void *buf, size_t len, const uint8_t prg_id[8]);
+
 /* Bus (bus.c) */
 uint8_t bus_read(nes_t *nes, uint16_t addr);
 void bus_write(nes_t *nes, uint16_t addr, uint8_t v);
@@ -208,5 +220,6 @@ uint8_t mmc1_chr_read(nes_t *nes, uint16_t addr);
 void mmc1_chr_write(nes_t *nes, uint16_t addr, uint8_t v);
 uint16_t mmc1_nt_addr(nes_t *nes, uint16_t addr);
 int mmc1_prg_bank_at(nes_t *nes, uint16_t addr);
+void mmc1_refresh(nes_t *nes); /* recompute bank pointers (after a state load) */
 
 #endif

@@ -8,7 +8,7 @@ set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)
 sha=$(git -C "$repo" rev-parse --verify -q --short=8 HEAD 2>/dev/null || echo dev)
-commit=$(git -C "$repo" rev-parse --verify -q HEAD 2>/dev/null || echo unknown)
+commit=${MM_COMMIT:-$(git -C "$repo" rev-parse --verify -q HEAD 2>/dev/null || echo unknown)}
 tag=${1:-mm-r0-$sha}
 out=$(realpath -m "${2:-$repo/build/release}")
 name=maniac-mansion-port-$tag

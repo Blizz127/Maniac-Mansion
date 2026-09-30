@@ -278,8 +278,10 @@ void apu_cycle(nes_t *nes)
     apu_tri_t *t = &a->tri;
     if (t->timer_ctr == 0) {
         t->timer_ctr = t->timer;
-        if (t->length && t->linear_ctr && t->timer >= 2)
+        if (t->length && t->linear_ctr && t->timer >= 2) {
             t->seq = (t->seq + 1) & 31;
+            a->mix_dirty = true;
+        }
     } else {
         t->timer_ctr--;
     }
@@ -313,18 +315,23 @@ void apu_cycle(nes_t *nes)
     if (d->dma_delay)
         d->dma_delay--;
 
-    /* mix */
-    int p[2];
-    for (int i = 0; i < 2; i++) {
-        apu_pulse_t *q = &a->pulse[i];
-        int vol = q->const_vol ? q->vol : q->env_decay;
-        p[i] = (q->length && !pulse_muted(q) && duty_tab[q->duty][q->duty_pos]) ? vol : 0;
+    /* Mix. Channel outputs only change on APU ticks (pulse, noise, DMC,
+     * frame sequencer), on triangle steps and on register writes, so the
+     * DAC value is recomputed only then. */
+    if (apu_tick || a->mix_dirty) {
+        a->mix_dirty = false;
+        int p[2];
+        for (int i = 0; i < 2; i++) {
+            apu_pulse_t *q = &a->pulse[i];
+            int vol = q->const_vol ? q->vol : q->env_decay;
+            p[i] = (q->length && !pulse_muted(q) && duty_tab[q->duty][q->duty_pos]) ? vol : 0;
+        }
+        int tv = tri_seq[t->seq];
+        apu_noise_t *n = &a->noise;
+        int nv = (n->length && !(n->lfsr & 1)) ? (n->const_vol ? n->vol : n->env_decay) : 0;
+        a->mix = pulse_mix[p[0] + p[1]] + tnd_mix[3 * tv + 2 * nv + d->output];
     }
-    int tv = tri_seq[t->seq];
-    apu_noise_t *n = &a->noise;
-    int nv = (n->length && !(n->lfsr & 1)) ? (n->const_vol ? n->vol : n->env_decay) : 0;
-    float s = pulse_mix[p[0] + p[1]] + tnd_mix[3 * tv + 2 * nv + d->output];
-    a->sample_acc += s;
+    a->sample_acc += a->mix;
     a->sample_n++;
     a->sample_phase += 1.0;
     if (a->sample_phase >= a->cycles_per_sample) {
@@ -356,6 +363,7 @@ uint8_t apu_status_read(nes_t *nes, bool peek)
 void apu_reg_write(nes_t *nes, uint16_t addr, uint8_t v)
 {
     apu_t *a = &nes->apu;
+    a->mix_dirty = true;
     switch (addr) {
     case 0x4000: case 0x4004: {
         apu_pulse_t *p = &a->pulse[(addr >> 2) & 1];

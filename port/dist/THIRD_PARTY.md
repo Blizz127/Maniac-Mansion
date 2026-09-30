@@ -17,3 +17,7 @@
 
 Maniac Mansion is a trademark of Lucasfilm Ltd. / LucasArts. This package
 contains no game code or data; it runs a ROM supplied by the user.
+
+- **font8x8** (dev menu overlay text, compiled in), public domain:
+  Daniel Hepper, github.com/dhepper/font8x8, based on Marcel Sondaar's
+  font8_8 and the IBM public-domain VGA fonts.

@@ -20,7 +20,7 @@ target_link_libraries(mm-headless mmcore mmhost_common)
 
 find_package(SDL2 REQUIRED)
 set(MM_VERSION "dev" CACHE STRING "Version string baked into the port")
-add_library(mmhost STATIC src/host/config.c src/host/pads.c)
+add_library(mmhost STATIC src/host/config.c src/host/pads.c src/host/devmenu.c)
 target_include_directories(mmhost PUBLIC ${SDL2_INCLUDE_DIRS})
 
 add_executable(maniac-mansion-port src/host/main.c)
@@ -33,3 +33,6 @@ add_executable(test-pads tests/test_pads.c)
 target_include_directories(test-pads PRIVATE ${SDL2_INCLUDE_DIRS})
 target_link_libraries(test-pads mmhost ${SDL2_LIBRARIES})
 add_test(NAME pads COMMAND test-pads)
+
+add_executable(tracegen tools/tracegen.c)
+target_link_libraries(tracegen mmcore)

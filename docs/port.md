@@ -92,6 +92,65 @@ Reference-emulator notes:
   the dumper sets port 1 first.
 - FCEUX runs from `.tools/fceux` with its bundled libraries and Qt plugins.
 
+### Gameplay traces
+
+`port/tools/tracegen` builds a trace closed-loop. It steers the game's pointer
+(OAM entry 1) to screen positions from live sprite data and presses buttons.
+It writes a plain `.mmin`, so the port and the reference emulator replay the
+same inputs. `port/traces/newgame.txt` is the script: power on, intro, pick
+two kids, START, the opening dialogue, then a walk command on the verb UI.
+`port/traces/newgame.mmin` is its output (8936 frames).
+
+```sh
+build/port/tracegen rom/original.nes < port/traces/newgame.txt > port/traces/newgame.mmin
+```
+
+`mm-headless --save-state N:FILE` / `--load-state FILE` take whole-machine
+snapshots. Reloading one reproduces the continuation frame for frame, which
+is tested.
+
+## Dev menu
+
+This follows DEV_MENU_SPEC. It is **off by default**; `MM_DEV_MENU=1` or
+`[dev] dev_menu = on` enables it, and `MM_CHEATS=0` disables it even when
+requested. Open and close it with **F8** or **Back+Start on the same pad**.
+With the opt-in on, Select/Start are held back from the game for 6 frames,
+so the combo never reaches the game. Navigate with the D-pad or stick
+(edge-triggered, no auto-repeat), A to confirm and B to go back, or with the
+arrows, Enter and Esc on the keyboard. The overlay is drawn on the presented
+copy of the frame. The game keeps running while the menu is open, but it
+receives no input, and after the menu closes held buttons must return to
+neutral before input reaches the game again.
+
+| Page | Contents |
+| --- | --- |
+| Warp, Finish Area, Cheats | No entries yet. Each needs verified game state (SCUMM room and variable locations from the decomp and route recordings), so each shows a note and no selectable rows |
+| Options | Fast-forward, speed (2×/4×/8×/max), screenshot, quick save, quick load, pixel aspect (8:7/square), overscan crop, help page |
+
+Quick save/load (also F11/F12 with the opt-in) use one host-side slot:
+`~/.local/share/maniac-mansion-port/quicksave/slot1.mmst`. It holds a
+whole-machine snapshot tied to the build and ROM, and the battery save format
+is untouched. Because it is a full snapshot, it is safe at any point. The
+spec's "field only" rule exists for ports that serialize game state.
+
+Keys that always work: F6/L3 fast-forward toggle, Backspace/R3 (hold),
+F10 screenshot, Alt+Enter fullscreen and Esc quit. Only with the opt-in:
+F1 help, F7 speed, F8 menu, F11/F12 quick save/load.
+
+`port/tests/test_devmenu.sh BUILD ROM OUT` is the gate. It runs windowed
+under Xvfb and uses the harness-only `MM_DEV_KEYS="frame:KEY,…"` input, which
+is inert unless the variable is set.
+
+| Check | Result |
+| --- | --- |
+| All-off identity: menu opened, navigated and closed during `smoke.mmin`, every frame hash equal to a run with the opt-in off | 900/900 identical |
+| Opens (F8), off by default (scripted keys inert), hard disable (`MM_CHEATS=0`) | pass |
+| Quick save at frame 300, quick load at 600: the run replays the original from the saved frame | 200/200 frames identical |
+| Screenshots (root, options, empty group) | `build/devmenu-test/menu-*.png` |
+
+Physical controllers (the owner's Legion Go 2 and Steam Deck) are **not
+tested yet**. Virtual-device tests don't count as hardware passes.
+
 ## Controllers
 
 DEV_MENU_SPEC §4a is implemented in `port/src/host/pads.c`:

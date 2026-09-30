@@ -143,6 +143,8 @@ static void eval_sprites(nes_t *nes)
     int h = (p->ctrl & 0x20) ? 16 : 8;
     int line = p->scanline; /* sprites for line+1 use Y compare against line */
     int n = 0;
+    uint8_t slot_lo[8], slot_hi[8], slot_attr[8], slot_x[8];
+    bool slot_is0[8];
     p->spr0_on_line = false;
     for (int i = 0; i < 64; i++) {
         int y = p->oam[i * 4];
@@ -169,13 +171,28 @@ static void eval_sprites(nes_t *nes)
             lo = (uint8_t)(((lo * 0x0802LU & 0x22110LU) | (lo * 0x8020LU & 0x88440LU)) * 0x10101LU >> 16);
             hi = (uint8_t)(((hi * 0x0802LU & 0x22110LU) | (hi * 0x8020LU & 0x88440LU)) * 0x10101LU >> 16);
         }
-        p->spr_lo[n] = lo;
-        p->spr_hi[n] = hi;
-        p->spr_attr[n] = attr;
-        p->spr_x[n] = p->oam[i * 4 + 3];
+        /* Lower OAM index wins: fill from the last sprite to the first. */
+        slot_lo[n] = lo;
+        slot_hi[n] = hi;
+        slot_attr[n] = attr;
+        slot_x[n] = p->oam[i * 4 + 3];
+        slot_is0[n] = i == 0;
         n++;
     }
     p->spr_count = n;
+    memset(p->spr_line, 0, sizeof p->spr_line);
+    for (int s = n - 1; s >= 0; s--) {
+        for (int b = 0; b < 8; b++) {
+            int x = slot_x[s] + b;
+            if (x > 255)
+                break;
+            uint8_t px = ((slot_lo[s] >> (7 - b)) & 1) | (((slot_hi[s] >> (7 - b)) & 1) << 1);
+            if (!px)
+                continue;
+            p->spr_line[x] = 0x10 | ((slot_attr[s] & 3) << 2) | px | ((slot_attr[s] & 0x20) << 1) |
+                             (slot_is0[s] ? 0x80 : 0);
+        }
+    }
 }
 
 static void render_pixel(nes_t *nes)
@@ -197,20 +214,13 @@ static void render_pixel(nes_t *nes)
         }
         uint8_t sp = 0;
         bool sp_front = false;
-        if ((p->mask & 0x10) && (x >= 8 || (p->mask & 0x04))) {
-            for (int i = 0; i < p->spr_count; i++) {
-                int off = x - p->spr_x[i];
-                if (off < 0 || off > 7)
-                    continue;
-                int b = 7 - off;
-                uint8_t px = ((p->spr_lo[i] >> b) & 1) | (((p->spr_hi[i] >> b) & 1) << 1);
-                if (!px)
-                    continue;
-                if (i == 0 && p->spr0_on_line && (bg & 3) && x != 255)
+        if ((p->mask & 0x10) && (x >= 8 || (p->mask & 0x04)) && p->spr_count) {
+            uint8_t s = p->spr_line[x];
+            if (s) {
+                if ((s & 0x80) && (bg & 3) && x != 255)
                     p->status |= 0x40;
-                sp = 0x10 | ((p->spr_attr[i] & 3) << 2) | px;
-                sp_front = !(p->spr_attr[i] & 0x20);
-                break;
+                sp = s & 0x1F;
+                sp_front = !(s & 0x40);
             }
         }
         uint8_t idx;

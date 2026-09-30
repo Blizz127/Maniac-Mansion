@@ -111,7 +111,8 @@ static void usage(void)
 int main(int argc, char **argv)
 {
     const char *rom = NULL, *input = NULL, *hashes = NULL, *png_dir = NULL, *shots = NULL, *nestest = NULL;
-    const char *ram_dump = NULL;
+    const char *ram_dump = NULL, *load_state = NULL, *save_state = NULL;
+    long save_state_at = -1;
     bool allow_unknown = false, blargg = false, state = false, index_only = false;
     long frames = -1;
     unsigned ram_fill = 0;
@@ -126,6 +127,12 @@ int main(int argc, char **argv)
         else if (ARG("--png-dir")) png_dir = v;
         else if (ARG("--shots")) shots = v;
         else if (ARG("--ram-dump")) ram_dump = v;
+        else if (ARG("--load-state")) load_state = v;
+        else if (ARG("--save-state")) {
+            char *colon;
+            save_state_at = strtol(v, &colon, 10);
+            save_state = *colon == ':' ? colon + 1 : NULL;
+        }
         else if (ARG("--ram-fill")) ram_fill = (unsigned)strtoul(v, NULL, 16);
         else if (ARG("--ppu-offset")) nes_ppu_offset = atoi(v);
         else if (ARG("--nestest-log")) nestest = v;
@@ -160,6 +167,20 @@ int main(int argc, char **argv)
     if (cart.chr_size) /* test ROMs with CHR-ROM */
         memcpy(nes.chrram, cart.chr, cart.chr_size < 8192 ? cart.chr_size : 8192);
 
+    uint8_t prg_id[8];
+    for (int i = 0; i < 8; i++)
+        prg_id[i] = (uint8_t)strtoul((char[3]){cart.prg_sha256[i * 2], cart.prg_sha256[i * 2 + 1], 0}, NULL, 16);
+    static uint8_t state_buf[sizeof(nes_t) + 64];
+    if (load_state) {
+        FILE *sf = fopen(load_state, "rb");
+        size_t n = sf ? fread(state_buf, 1, sizeof state_buf, sf) : 0;
+        if (sf)
+            fclose(sf);
+        if (!nes_state_load(&nes, state_buf, n, prg_id)) {
+            fprintf(stderr, "error: cannot load state %s (other build or ROM?)\n", load_state);
+            return 2;
+        }
+    }
     if (nestest)
         return run_nestest(&nes, nestest);
     if (blargg)
@@ -195,6 +216,14 @@ int main(int argc, char **argv)
         uint64_t h = fb_hash(nes.ppu.fb, index_only ? 0x3F : 0x1FF);
         if (rf)
             fwrite(nes.ram, 1, sizeof nes.ram, rf);
+        if (f == save_state_at && save_state) {
+            nes_state_save(&nes, state_buf, prg_id);
+            FILE *sf = fopen(save_state, "wb");
+            if (!sf || fwrite(state_buf, 1, nes_state_size(), sf) != nes_state_size())
+                fprintf(stderr, "warning: cannot write state %s\n", save_state);
+            if (sf)
+                fclose(sf);
+        }
         if (hf) {
             fprintf(hf, "%ld %016" PRIx64, f, h);
             if (watch_lo >= 0) {
@@ -206,6 +235,8 @@ int main(int argc, char **argv)
                 fprintf(hf, " pc=%04X a=%02X x=%02X y=%02X p=%02X s=%02X cyc=%" PRIu64 " sl=%d dot=%d",
                         nes.cpu.pc, nes.cpu.a, nes.cpu.x, nes.cpu.y, nes.cpu.p, nes.cpu.s,
                         nes.cpu.cycles, nes.ppu.scanline, nes.ppu.dot);
+            if (state)
+                fprintf(hf, " spr0=%u,%u", nes.ppu.oam[3], nes.ppu.oam[0]);
             fputc('\n', hf);
         }
         if (png_dir && shots) {

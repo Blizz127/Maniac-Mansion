@@ -36,7 +36,7 @@ mesen)
     raw=$work/mesen-$$.raw
     HOME=$home XDG_CONFIG_HOME=$home/.config SDL_AUDIODRIVER=dummy \
         MM_RAW=$raw MM_INPUT=$trace MM_RAMDUMP="${MM_RAMDUMP:-}" \
-        xvfb-run -a "$mesen" --testRunner "$here/ref-mesen.lua" "$rom" >"$work/mesen.log" 2>&1 || true
+        xvfb-run -a "$mesen" --testRunner "$here/ref-mesen.lua" "$rom" --timeout=36000 >"$work/mesen.log" 2>&1 || true
     python3 "$here/framehash.py" raw "$raw" --bpp 2 >"$out"
     rm -f "$raw"
     ;;

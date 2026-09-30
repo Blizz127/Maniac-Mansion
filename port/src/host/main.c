@@ -13,7 +13,9 @@
 
 #include "../core/cart.h"
 #include "../core/nes.h"
+#include "../core/trace.h"
 #include "config.h"
+#include "devmenu.h"
 #include "pads.h"
 #include "palette.h"
 #include "png.h"
@@ -303,6 +305,7 @@ typedef struct {
     int prescale;
     bool par87;
     int crop; /* lines hidden at top and bottom */
+    char window_shot[1024]; /* pending capture of the next presented frame */
     uint32_t lut[512];
 } video_t;
 
@@ -312,7 +315,7 @@ static void video_lut(video_t *v)
         v->lut[i] = 0xFF000000u | nes_rgb((uint16_t)i);
 }
 
-static void video_present(video_t *v, const uint16_t *fb)
+static void video_present(video_t *v, const uint16_t *fb, devmenu_t *dm)
 {
     void *pixels;
     int pitch;
@@ -358,7 +361,98 @@ static void video_present(video_t *v, const uint16_t *fb)
     } else {
         SDL_RenderCopy(v->ren, v->frame, &src, &dst);
     }
+    if (dm)
+        devmenu_draw(dm, v->ren, dst); /* host overlay on the presented copy */
+    if (v->window_shot[0]) { /* tests: capture exactly what is presented */
+        int w, h;
+        SDL_GetRendererOutputSize(v->ren, &w, &h);
+        uint8_t *rgb = malloc((size_t)w * h * 3);
+        if (rgb && SDL_RenderReadPixels(v->ren, NULL, SDL_PIXELFORMAT_RGB24, rgb, w * 3) == 0)
+            logf_(png_write_rgb(v->window_shot, rgb, w, h) ? "window shot: %s" : "window shot failed: %s", v->window_shot);
+        free(rgb);
+        v->window_shot[0] = 0;
+    }
     SDL_RenderPresent(v->ren);
+}
+
+/* ------------------------------------------------------------- helpers */
+
+static void take_screenshot(const uint16_t *fb, devmenu_t *dm)
+{
+    char dir[1100], p[1200];
+    snprintf(dir, sizeof dir, "%s/screenshots", path_state_dir());
+    path_mkdirs(dir);
+    time_t t = time(NULL);
+    struct tm tm;
+    localtime_r(&t, &tm);
+    snprintf(p, sizeof p, "%s/mm-%04d%02d%02d-%02d%02d%02d.png", dir, tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+             tm.tm_hour, tm.tm_min, tm.tm_sec);
+    bool ok = png_write_nes(p, fb);
+    logf_(ok ? "screenshot: %s" : "screenshot failed: %s", p);
+    if (dm)
+        devmenu_toast(dm, ok ? "SCREENSHOT SAVED" : "SCREENSHOT FAILED");
+}
+
+static const char *quick_slot(void)
+{
+    static char p[1100];
+    char dir[1100];
+    snprintf(dir, sizeof dir, "%s/quicksave", path_data_dir());
+    path_mkdirs(dir);
+    snprintf(p, sizeof p, "%s/slot1.mmst", dir);
+    return p;
+}
+
+/* Quick save/load are whole-machine snapshots in a host-side slot; the
+ * game's own battery save is untouched. */
+static void quick_save(nes_t *nes, const uint8_t id[8], devmenu_t *dm)
+{
+    static uint8_t buf[sizeof(nes_t) + 64];
+    nes_state_save(nes, buf, id);
+    bool ok = write_atomic(quick_slot(), buf, nes_state_size());
+    logf_("[DEV_MENU] quick save %s: %s", ok ? "done" : "FAILED", quick_slot());
+    if (dm)
+        devmenu_toast(dm, ok ? "QUICK SAVE DONE" : "QUICK SAVE FAILED");
+}
+
+static void quick_load(nes_t *nes, const uint8_t id[8], devmenu_t *dm)
+{
+    static uint8_t buf[sizeof(nes_t) + 64];
+    FILE *f = fopen(quick_slot(), "rb");
+    size_t n = f ? fread(buf, 1, sizeof buf, f) : 0;
+    if (f)
+        fclose(f);
+    const char *why = !f ? "NO QUICK SAVE YET" : nes_state_load(nes, buf, n, id) ? NULL : "QUICK SAVE IS FROM ANOTHER BUILD";
+    logf_("[DEV_MENU] quick load %s", why ? why : "done");
+    if (dm)
+        devmenu_toast(dm, "%s", why ? why : "QUICK LOAD DONE");
+}
+
+/* Harness-only scripted dev keys (spec §9): MM_DEV_KEYS="frame:KEY,...",
+ * KEY = F8 UP DOWN OK BACK F1 F10 F11 F12. Inert unless set. */
+typedef struct {
+    long frame;
+    char key[8];
+} devkey_t;
+
+static int parse_devkeys(devkey_t *out, int max)
+{
+    const char *s = getenv("MM_DEV_KEYS");
+    int n = 0;
+    while (s && *s && n < max) {
+        long fr;
+        char k[8];
+        int used = 0;
+        if (sscanf(s, "%ld:%7[A-Z0-9]%n", &fr, k, &used) != 2)
+            break;
+        out[n].frame = fr;
+        snprintf(out[n].key, sizeof out[n].key, "%s", k);
+        n++;
+        s += used;
+        if (*s == ',')
+            s++;
+    }
+    return n;
 }
 
 /* ----------------------------------------------------------------- main */
@@ -387,7 +481,10 @@ static void fatal_box(const char *title, const char *msg)
 
 int main(int argc, char **argv)
 {
-    const char *cli_rom = NULL, *cfg_path = NULL;
+    const char *cli_rom = NULL, *cfg_path = NULL, *trace_path = NULL, *shot_path = NULL, *hash_path = NULL;
+    long max_frames = -1, shot_frame = -1;
+    struct { long frame; char path[1024]; } wshots[16];
+    int nwshots = 0;
     bool check_only = false;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--rom") && i + 1 < argc)
@@ -399,6 +496,21 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) {
             usage();
             return 0;
+        } else if (!strcmp(argv[i], "--trace") && i + 1 < argc) {
+            trace_path = argv[++i]; /* replay a .mmin (tests, demos) */
+        } else if (!strcmp(argv[i], "--hashes") && i + 1 < argc) {
+            hash_path = argv[++i]; /* per-frame mmfb1 hashes (tests) */
+        } else if (!strcmp(argv[i], "--frames") && i + 1 < argc) {
+            max_frames = strtol(argv[++i], NULL, 10);
+        } else if (!strcmp(argv[i], "--shot") && i + 1 < argc) {
+            char *colon; /* FRAME:PATH */
+            shot_frame = strtol(argv[++i], &colon, 10);
+            shot_path = *colon == ':' ? colon + 1 : NULL;
+        } else if (!strcmp(argv[i], "--window-shot") && i + 1 < argc && nwshots < 16) {
+            char *colon; /* FRAME:PATH, the presented window including overlays */
+            wshots[nwshots].frame = strtol(argv[++i], &colon, 10);
+            if (*colon == ':')
+                snprintf(wshots[nwshots++].path, sizeof wshots[0].path, "%s", colon + 1);
         } else if (!strcmp(argv[i], "--check-rom")) {
             check_only = true;
         } else if (!strcmp(argv[i], "--version")) {
@@ -568,42 +680,105 @@ int main(int argc, char **argv)
     for (int i = 0; i < SDL_NumJoysticks(); i++)
         pads_open(&pads, i);
 
-    bool running = true, ff_toggle = false;
+    trace_t trace = {0};
+    if (trace_path && !trace_load(&trace, trace_path, err, sizeof err)) {
+        fatal_box("Maniac Mansion", err);
+        return 2;
+    }
+    long frame_no = 0;
+    uint64_t emu_ticks = 0;
+    bool running = true;
+    FILE *hash_out = hash_path ? fopen(hash_path, "w") : NULL;
     uint64_t freq = SDL_GetPerformanceFrequency(), last = SDL_GetPerformanceCounter();
     double acc = 0, frame_time = 1.0 / NTSC_FPS;
     static int16_t abuf[8192];
     uint8_t prev_hot = 0;
 
+    /* dev menu: opt-in; MM_CHEATS=0 disables it entirely */
+    const char *cheats_env = getenv("MM_CHEATS");
+    const char *dev_env = getenv("MM_DEV_MENU");
+    bool dev_on = !(cheats_env && !strcmp(cheats_env, "0")) &&
+                  ((dev_env && !strcmp(dev_env, "1")) || config_bool(cfg, "dev", "dev_menu", false));
+    dm_state_t dms = {0};
+    dms.ff_speed = 1;
+    dms.aspect = v.par87 ? 0 : 1;
+    dms.crop = v.crop ? 1 : 0;
+    devmenu_t *dm = dev_on ? devmenu_create(&dms, logline) : NULL;
+    logf_("[DEV_MENU] %s", dev_on ? "enabled (F8 or Back+Start)" : "off");
+    uint8_t prg_id[8];
+    for (int i = 0; i < 8; i++) {
+        unsigned b;
+        sscanf(cart.prg_sha256 + i * 2, "%2x", &b);
+        prg_id[i] = (uint8_t)b;
+    }
+    devkey_t devkeys[64];
+    int ndevkeys = dev_on ? parse_devkeys(devkeys, 64) : 0, devkey_i = 0;
+    bool drain = false;          /* after the menu closes: wait for neutral */
+    int combo_hold = 0;          /* frames Back or Start has been held (opt-in) */
+    bool combo_fired = false;
+    uint8_t prev_nav = 0;        /* pad nav edges: 1 up 2 down 4 ok 8 back */
+
     while (running) {
         SDL_Event e;
+        bool menu = dm && devmenu_is_open(dm);
         while (SDL_PollEvent(&e)) {
             switch (e.type) {
             case SDL_QUIT: running = false; break;
             case SDL_CONTROLLERDEVICEADDED: pads_open(&pads, e.cdevice.which); break;
             case SDL_CONTROLLERDEVICEREMOVED: pads_close(&pads, e.cdevice.which); break;
-            case SDL_KEYDOWN:
+            case SDL_KEYDOWN: {
                 if (e.key.repeat)
                     break;
-                if (e.key.keysym.sym == SDLK_ESCAPE)
-                    running = false;
-                else if (e.key.keysym.sym == SDLK_F6)
-                    ff_toggle = !ff_toggle;
-                else if (e.key.keysym.sym == SDLK_RETURN && (e.key.keysym.mod & KMOD_ALT)) {
+                SDL_Keycode k = e.key.keysym.sym;
+                if (k == SDLK_RETURN && (e.key.keysym.mod & KMOD_ALT)) {
                     fullscreen = !fullscreen;
                     SDL_SetWindowFullscreen(v.win, fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
-                } else if (e.key.keysym.sym == SDLK_F10) {
-                    char dir[1100], p[1200];
-                    snprintf(dir, sizeof dir, "%s/screenshots", path_state_dir());
-                    path_mkdirs(dir);
-                    time_t t = time(NULL);
-                    struct tm tm;
-                    localtime_r(&t, &tm);
-                    snprintf(p, sizeof p, "%s/mm-%04d%02d%02d-%02d%02d%02d.png", dir, tm.tm_year + 1900,
-                             tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
-                    logf_(png_write_nes(p, nes.ppu.fb) ? "screenshot: %s" : "screenshot failed: %s", p);
+                } else if (menu) {
+                    /* menu open: it consumes navigation; port hotkeys are suppressed */
+                    if (k == SDLK_UP) devmenu_nav(dm, DM_UP);
+                    else if (k == SDLK_DOWN) devmenu_nav(dm, DM_DOWN);
+                    else if (k == SDLK_RETURN || k == SDLK_KP_ENTER) devmenu_nav(dm, DM_OK);
+                    else if (k == SDLK_ESCAPE) devmenu_nav(dm, DM_BACK);
+                    else if (k == SDLK_F8) devmenu_toggle(dm);
+                    else if (k == SDLK_F1) dms.show_help = !dms.show_help;
+                } else if (k == SDLK_ESCAPE) {
+                    running = false;
+                } else if (k == SDLK_F6) {
+                    dms.ff_on = !dms.ff_on;
+                } else if (k == SDLK_F10) {
+                    take_screenshot(nes.ppu.fb, dm);
+                } else if (dm) {
+                    if (k == SDLK_F8) devmenu_toggle(dm);
+                    else if (k == SDLK_F1) dms.show_help = !dms.show_help;
+                    else if (k == SDLK_F7) {
+                        dms.ff_speed = (e.key.keysym.mod & KMOD_SHIFT) ? 1 : (dms.ff_speed + 1) % 4;
+                        devmenu_toast(dm, "FAST-FORWARD SPEED: %s",
+                                      (const char *[]){"2X", "4X", "8X", "MAX"}[dms.ff_speed]);
+                    } else if (k == SDLK_F11) dms.req_quick_save = true;
+                    else if (k == SDLK_F12) dms.req_quick_load = true;
                 }
-                break;
+                if (dm && !devmenu_is_open(dm) && menu)
+                    drain = true;
+            } break;
             }
+        }
+
+        /* scripted dev keys (tests only) */
+        while (devkey_i < ndevkeys && devkeys[devkey_i].frame <= frame_no) {
+            const char *k = devkeys[devkey_i++].key;
+            logf_("[DEV_MENU] scripted key %s at frame %ld", k, frame_no);
+            bool was = devmenu_is_open(dm);
+            if (!strcmp(k, "F8")) devmenu_toggle(dm);
+            else if (!strcmp(k, "UP")) devmenu_nav(dm, DM_UP);
+            else if (!strcmp(k, "DOWN")) devmenu_nav(dm, DM_DOWN);
+            else if (!strcmp(k, "OK")) devmenu_nav(dm, DM_OK);
+            else if (!strcmp(k, "BACK")) devmenu_nav(dm, DM_BACK);
+            else if (!strcmp(k, "F1")) dms.show_help = !dms.show_help;
+            else if (!strcmp(k, "F10")) take_screenshot(nes.ppu.fb, dm);
+            else if (!strcmp(k, "F11")) dms.req_quick_save = true;
+            else if (!strcmp(k, "F12")) dms.req_quick_load = true;
+            if (was && !devmenu_is_open(dm))
+                drain = true;
         }
 
         /* input */
@@ -616,11 +791,91 @@ int main(int argc, char **argv)
         if ((kb & (PAD_LEFT | PAD_RIGHT)) == (PAD_LEFT | PAD_RIGHT)) kb &= ~(PAD_LEFT | PAD_RIGHT);
         uint8_t hot;
         uint8_t gp = pads_poll(&pads, &hot);
-        if ((hot & 1) && !(prev_hot & 1))
-            ff_toggle = !ff_toggle; /* L3 */
+        menu = dm && devmenu_is_open(dm);
+
+        if (dm) {
+            /* Back+Start on the same pad opens/closes the menu. With the
+             * opt-in on, both are held back from the game for a short grace
+             * window so the combo never also reaches the game. */
+            bool combo_now = false;
+            for (int i = 0; i < pads.n; i++)
+                if (SDL_GameControllerGetButton(pads.gc[i], SDL_CONTROLLER_BUTTON_BACK) &&
+                    SDL_GameControllerGetButton(pads.gc[i], SDL_CONTROLLER_BUTTON_START))
+                    combo_now = true;
+            bool either = gp & (PAD_SELECT | PAD_START);
+            if (combo_now && !combo_fired) {
+                combo_fired = true;
+                bool was = devmenu_is_open(dm);
+                devmenu_toggle(dm);
+                if (was)
+                    drain = true;
+                menu = devmenu_is_open(dm);
+            }
+            if (!either) {
+                combo_fired = false;
+                combo_hold = 0;
+            } else {
+                combo_hold++;
+            }
+            if (combo_fired || (either && combo_hold <= 6))
+                gp &= ~(PAD_SELECT | PAD_START);
+            /* pad navigation: edges only, no auto-repeat */
+            uint8_t nav = 0;
+            if (menu && !combo_fired) {
+                if (gp & PAD_UP) nav |= 1;
+                if (gp & PAD_DOWN) nav |= 2;
+                if (gp & PAD_A) nav |= 4;
+                if (gp & PAD_B) nav |= 8;
+                uint8_t edge = nav & ~prev_nav;
+                if (edge & 1) devmenu_nav(dm, DM_UP);
+                if (edge & 2) devmenu_nav(dm, DM_DOWN);
+                if (edge & 4) devmenu_nav(dm, DM_OK);
+                if (edge & 8) {
+                    devmenu_nav(dm, DM_BACK);
+                    if (!devmenu_is_open(dm))
+                        drain = true;
+                }
+            }
+            prev_nav = nav;
+            menu = devmenu_is_open(dm);
+            /* one-shot requests from the menu or F-keys */
+            if (dms.req_screenshot) {
+                dms.req_screenshot = false;
+                take_screenshot(nes.ppu.fb, dm);
+            }
+            if (dms.req_quick_save) {
+                dms.req_quick_save = false;
+                quick_save(&nes, prg_id, dm);
+            }
+            if (dms.req_quick_load) {
+                dms.req_quick_load = false;
+                quick_load(&nes, prg_id, dm);
+            }
+            v.par87 = dms.aspect == 0;
+            v.crop = dms.crop ? 8 : 0;
+        }
+        if ((hot & 1) && !(prev_hot & 1) && !menu)
+            dms.ff_on = !dms.ff_on; /* L3 */
         prev_hot = hot;
-        bool ff = ff_toggle || ks[SDL_SCANCODE_BACKSPACE] || (hot & 2);
-        nes_set_pad(&nes, 0, kb | gp);
+        bool ff = !menu && (dms.ff_on || ks[SDL_SCANCODE_BACKSPACE] || (hot & 2));
+
+        uint8_t game_in = kb | gp;
+        if (menu)
+            game_in = 0; /* the menu consumes input; the game keeps running */
+        if (drain) {
+            if (game_in)
+                game_in = 0; /* held from the menu: must return to neutral first */
+            else
+                drain = false;
+        }
+        if (trace_path) {
+            uint8_t tp[2];
+            trace_at(&trace, (uint32_t)frame_no, tp);
+            nes_set_pad(&nes, 0, tp[0]);
+            nes_set_pad(&nes, 1, tp[1]);
+        } else {
+            nes_set_pad(&nes, 0, game_in);
+        }
 
         /* timing */
         uint64_t now = SDL_GetPerformanceCounter();
@@ -629,8 +884,11 @@ int main(int argc, char **argv)
         if (acc > 0.25)
             acc = frame_time; /* after a stall, don't try to catch up */
         int to_run = 0;
+        uint64_t budget = 0;
         if (ff) {
-            to_run = 4;
+            int sp = dm_ff_speeds[dms.ff_speed];
+            to_run = sp ? sp : 64;
+            budget = sp ? 0 : now + freq / 70; /* max: whatever fits in ~14 ms */
             acc = 0;
         } else {
             while (acc >= frame_time && to_run < 3) {
@@ -639,7 +897,29 @@ int main(int argc, char **argv)
             }
         }
         for (int f = 0; f < to_run; f++) {
+            if (trace_path && f > 0) {
+                uint8_t tp[2]; /* traces advance one frame at a time */
+                trace_at(&trace, (uint32_t)frame_no, tp);
+                nes_set_pad(&nes, 0, tp[0]);
+                nes_set_pad(&nes, 1, tp[1]);
+            }
+            uint64_t t0 = SDL_GetPerformanceCounter();
             nes_run_frame(&nes);
+            emu_ticks += SDL_GetPerformanceCounter() - t0;
+            if (frame_no == shot_frame && shot_path)
+                logf_(png_write_nes(shot_path, nes.ppu.fb) ? "screenshot: %s" : "screenshot failed: %s", shot_path);
+            if (hash_out) {
+                uint64_t h = 0xcbf29ce484222325ULL;
+                for (int k = 0; k < NES_W * NES_H; k++) {
+                    h ^= nes.ppu.fb[k];
+                    h *= 0x100000001b3ULL;
+                }
+                fprintf(hash_out, "%ld %016llx\n", frame_no, (unsigned long long)h);
+            }
+            for (int w = 0; w < nwshots; w++)
+                if (wshots[w].frame == frame_no)
+                    snprintf(v.window_shot, sizeof v.window_shot, "%s", wshots[w].path);
+            frame_no++;
             size_t n = nes_audio_take(&nes, abuf, sizeof abuf / sizeof abuf[0]);
             if (adev && !ff) {
                 if (volume != 100)
@@ -647,6 +927,12 @@ int main(int argc, char **argv)
                         abuf[k] = (int16_t)(abuf[k] * volume / 100);
                 SDL_QueueAudio(adev, abuf, (uint32_t)(n * sizeof abuf[0]));
             }
+            if (max_frames >= 0 && frame_no >= max_frames) {
+                running = false;
+                break;
+            }
+            if (budget && SDL_GetPerformanceCounter() > budget)
+                break;
         }
         if (adev) {
             /* Keep ~3 frames queued by nudging the resample ratio (max 0.5%). */
@@ -659,16 +945,22 @@ int main(int argc, char **argv)
             nes.apu.cycles_per_sample = base_cps * (1.0 + 0.005 * err_ratio);
         }
         if (to_run)
-            video_present(&v, nes.ppu.fb);
-        else if (!vsync)
-            SDL_Delay(1);
+            video_present(&v, nes.ppu.fb, dm);
         else
             SDL_Delay(1);
         save_flush(&save, &nes, false);
     }
 
     save_flush(&save, &nes, true);
+    if (frame_no)
+        logf_("frames: %ld, core %.3f ms/frame (%.0f fps capable)", frame_no,
+              1000.0 * (double)emu_ticks / (double)freq / (double)frame_no,
+              (double)frame_no * (double)freq / (double)(emu_ticks ? emu_ticks : 1));
     logf_("exit");
+    if (hash_out)
+        fclose(hash_out);
+    trace_free(&trace);
+    devmenu_free(dm);
     if (adev)
         SDL_CloseAudioDevice(adev);
     SDL_Quit();
