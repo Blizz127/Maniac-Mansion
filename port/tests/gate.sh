@@ -31,7 +31,9 @@ else
     add cpu_tests skipped
 fi
 "$b/test-pads" >"$out/pads.txt" 2>&1 && add pads_4a pass || add pads_4a FAIL
-for t in boot smoke newgame; do
+# Screen hashes on the shorter traces; Mesen's own capture is not reliable
+# on long runs, so the long gameplay trace is gated on machine state below.
+for t in boot smoke; do
     [ -f "$repo/port/traces/$t.mmin" ] || continue
     $H --rom "$rom" --input "$repo/port/traces/$t.mmin" --hashes "$out/$t.txt" >/dev/null 2>&1
     if [ -s "$ref/$t.mesen.txt" ]; then
@@ -41,6 +43,18 @@ for t in boot smoke newgame; do
         add "mesen_$t" skipped
     fi
 done
+# newgame: CPU RAM at every NMI entry and every APU register write
+t=newgame
+if [ -s "$ref/$t.mesen.nmi" ]; then
+    $H --rom "$rom" --input "$repo/port/traces/$t.mmin" --nmi-dump "$out/$t.nmi" --watch 4000-4017 --hashes "$out/$t.w.txt" >/dev/null 2>&1
+    if cmp -s "$out/$t.nmi" "$ref/$t.mesen.nmi"; then add mesen_newgame_ram "pass $(($(stat -c %s "$out/$t.nmi") / 2048)) NMI snapshots identical"; else add mesen_newgame_ram FAIL; fi
+    if [ -s "$ref/$t.mesen.w.txt" ]; then
+        r=$(python3 "$repo/port/tools/writelog-compare.py" "$out/$t.w.txt" "$ref/$t.mesen.w.txt" | head -1)
+        case $r in *" 0 differ"*) add mesen_newgame_apu "pass ${r#compared }" ;; *) add mesen_newgame_apu "FAIL ${r#compared }" ;; esac
+    fi
+else
+    add mesen_newgame_ram skipped
+fi
 if command -v xvfb-run >/dev/null; then
     "$here/test_devmenu.sh" "$b" "$rom" "$out/devmenu" >"$out/devmenu.txt" 2>&1 && add devmenu "pass $(grep -c PASS "$out/devmenu.txt") checks" || add devmenu FAIL
 else
