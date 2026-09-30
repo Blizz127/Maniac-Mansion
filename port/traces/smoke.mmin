@@ -1,4 +1,4 @@
-# The input sequence of tools/trace-smoke.lua (Codex's FCEUX smoke trace),
+# The input sequence of the decomp's FCEUX smoke trace (tools/trace-smoke.lua),
 # converted to 0-based frames: START on its frames 180/360/600, A on
 # 420/540/660, RIGHT held for 450-465.
 0 -

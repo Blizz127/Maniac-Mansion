@@ -1,0 +1,19 @@
+# Owner ROM and every derived binary/data file stay local.
+/rom/
+/roms/
+/build/
+/.tools/
+/local/
+*.nes
+*.NES
+*.prg
+*.chr
+*.bin
+*.zip
+*.7z
+*.sav
+*.cdl
+*.fcs
+*.mmo
+__pycache__/
+*.pyc

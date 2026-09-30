@@ -1,4 +1,4 @@
-/* Dev menu (~/release-staging/port-dev-menu/DEV_MENU_SPEC.md).
+/* Dev menu (the shared port dev-menu spec, DEV_MENU_SPEC.md).
  *
  * Opt-in only (MM_DEV_MENU=1 or [dev] dev_menu = on); MM_CHEATS=0 disables
  * it completely. Host-only: drawn over the presented frame, it never

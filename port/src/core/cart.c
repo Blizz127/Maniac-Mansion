@@ -1,8 +1,8 @@
 /* ROM identification. The game is never bundled: the user supplies their
- * own dump, which is checked against the No-Intro USA record (the same
- * identity the decomp pins in docs/rom.md). A clean dump with a different
- * header (for example iNES 1.0 instead of NES 2.0) is accepted when the
- * headerless PRG matches. */
+ * own dump, which is checked against the No-Intro USA record (record 1360,
+ * the identity the decomp also pins). A clean dump with a different header
+ * (for example iNES 1.0 instead of NES 2.0) is accepted when the headerless
+ * PRG matches. */
 #include "cart.h"
 
 #include <errno.h>
