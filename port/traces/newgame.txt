@@ -1,0 +1,19 @@
+# Script for port/tools/tracegen: power-on, let the intro run, pick two kids
+# (portraits 2 and 4), press the START button, sit through the opening
+# dialogue, then walk Dave left along the path and back to the door.
+wait 3400
+seek 1 62 136
+press A 2
+wait 150
+seek 1 126 136
+press A 2
+wait 150
+seek 1 206 108
+press A 2
+wait 3600
+seek 1 60 120
+press A 2
+wait 300
+seek 1 200 118
+press A 2
+wait 400

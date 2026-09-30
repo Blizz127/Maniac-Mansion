@@ -1,0 +1,19 @@
+# The input sequence of the decomp's FCEUX smoke trace (tools/trace-smoke.lua),
+# converted to 0-based frames: START on its frames 180/360/600, A on
+# 420/540/660, RIGHT held for 450-465.
+0 -
+179 START
+180 -
+359 START
+360 -
+419 A
+420 -
+449 RIGHT
+465 -
+539 A
+540 -
+599 START
+600 -
+659 A
+660 -
+end 900

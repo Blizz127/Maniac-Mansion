@@ -1,0 +1,21 @@
+# Release build environment: Ubuntu 22.04 (glibc 2.35) with SDL2 built from
+# source, so the bundled SDL2 loads X11/Wayland/PulseAudio/PipeWire/ALSA
+# backends at run time and the binary runs on SteamOS, Bazzite and older
+# desktop distributions. Used by port/tools/package-container.sh.
+FROM ubuntu:22.04
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      build-essential cmake pkg-config curl ca-certificates python3 file \
+      libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxinerama-dev \
+      libxss-dev libxfixes-dev libxkbcommon-dev libwayland-dev wayland-protocols libdecor-0-dev \
+      libegl-dev libgl-dev libgles-dev libdrm-dev libgbm-dev \
+      libpulse-dev libasound2-dev libpipewire-0.3-dev libudev-dev libdbus-1-dev libibus-1.0-dev \
+    && rm -rf /var/lib/apt/lists/*
+ARG SDL_VERSION=2.32.10
+RUN curl -fsSL -o /tmp/sdl.tar.gz https://github.com/libsdl-org/SDL/releases/download/release-${SDL_VERSION}/SDL2-${SDL_VERSION}.tar.gz \
+    && tar -C /tmp -xzf /tmp/sdl.tar.gz \
+    && cmake -S /tmp/SDL2-${SDL_VERSION} -B /tmp/sdl-build -DCMAKE_BUILD_TYPE=Release \
+         -DCMAKE_INSTALL_PREFIX=/opt/sdl2 -DSDL_STATIC=OFF -DSDL_TEST=OFF \
+    && cmake --build /tmp/sdl-build -j"$(nproc)" && cmake --install /tmp/sdl-build \
+    && rm -rf /tmp/sdl*
+ENV CMAKE_PREFIX_PATH=/opt/sdl2 LD_LIBRARY_PATH=/opt/sdl2/lib
